@@ -1,7 +1,8 @@
-import React from 'react';
-import { Search, UserPlus, LogOut } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, UserPlus, LogOut, Bell, Check, X, MessageSquare, Users } from 'lucide-react';
 import { signOut } from "firebase/auth";
-import { auth } from '../../config/firebase';
+import { doc, onSnapshot, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firestore';
+import { auth, db } from '../../config/firebase';
 
 export default function Sidebar({ 
   userProfile, 
@@ -15,21 +16,74 @@ export default function Sidebar({
   friendsList = [], 
   setShowAddFriend 
 }) {
-  // Ambil nama & username secara fleksibel dari userProfile atau currentUser
-  const displayName = userProfile?.displayName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Pengguna';
-  const username = userProfile?.username || currentUser?.email?.split('@')[0] || 'user';
-  
-  // Avatar fallback aman
-  const avatarSrc = userProfile?.photoURL || currentUser?.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`;
+  const [incomingRequests, setIncomingRequests] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
-  // Filter daftar teman berdasarkan input pencarian
+  const displayName = userProfile?.displayName || currentUser?.displayName || 'Pengguna';
+  const username = userProfile?.username || currentUser?.email?.split('@')[0] || 'user';
+  const avatarSrc = userProfile?.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`;
+
+  // Realtime Listener untuk Permintaan Pertemanan (Friend Requests)
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const userDocRef = doc(db, "users", currentUser.uid);
+    const unsubscribe = onSnapshot(userDocRef, async (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const requests = data.friendRequests || [];
+        
+        // Fetch data profil pengirim permintaan pertemanan
+        const reqProfiles = [];
+        for (const reqUid of requests) {
+          const reqDoc = await getDoc(doc(db, "users", reqUid));
+          if (reqDoc.exists()) {
+            reqProfiles.push(reqDoc.data());
+          }
+        }
+        setIncomingRequests(reqProfiles);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // Terima Permintaan Pertemanan
+  const handleAcceptRequest = async (senderUid) => {
+    try {
+      // 1. Tambahkan ke list teman saya & hapus request
+      await updateDoc(doc(db, "users", currentUser.uid), {
+        friends: arrayUnion(senderUid),
+        friendRequests: arrayRemove(senderUid)
+      });
+      // 2. Tambahkan saya ke list teman pengirim
+      await updateDoc(doc(db, "users", senderUid), {
+        friends: arrayUnion(currentUser.uid)
+      });
+    } catch (err) {
+      console.error("Gagal menerima pertemanan:", err);
+    }
+  };
+
+  // Tolak Permintaan Pertemanan
+  const handleRejectRequest = async (senderUid) => {
+    try {
+      await updateDoc(doc(db, "users", currentUser.uid), {
+        friendRequests: arrayRemove(senderUid)
+      });
+    } catch (err) {
+      console.error("Gagal menolak pertemanan:", err);
+    }
+  };
+
   const filteredFriends = friendsList.filter(friend => 
     friend.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     friend.username?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
-    <div className="w-80 border-r flex flex-col bg-slate-900/60 border-slate-800 text-slate-100">
+    <div className="w-80 border-r flex flex-col bg-slate-900/60 border-slate-800 text-slate-100 relative">
+      {/* Header Profil */}
       <div className="p-4 border-b flex items-center justify-between border-slate-800">
         <div className="flex items-center gap-3 min-w-0">
           <img 
@@ -41,12 +95,71 @@ export default function Sidebar({
               e.target.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`;
             }}
           />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0">
             <h3 className="font-bold text-sm leading-snug truncate text-white">{displayName}</h3>
             <p className="text-xs text-indigo-400 truncate">@{username}</p>
           </div>
         </div>
+
         <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Tombol Lonceng Notifikasi Pertemanan */}
+          <div className="relative">
+            <button 
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="p-2 hover:bg-slate-800/50 rounded-xl text-slate-400 hover:text-indigo-400 transition relative"
+              title="Notifikasi Pertemanan"
+            >
+              <Bell className="w-5 h-5" />
+              {incomingRequests.length > 0 && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-slate-900 animate-pulse"></span>
+              )}
+            </button>
+
+            {/* Popup List Notifikasi Permintaan Pertemanan */}
+            {showNotifications && (
+              <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-3 z-50">
+                <h4 className="text-xs font-bold text-slate-400 mb-2 px-1">Permintaan Pertemanan</h4>
+                {incomingRequests.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-3 text-center">Tidak ada permintaan pertemanan.</p>
+                ) : (
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {incomingRequests.map((reqUser) => (
+                      <div key={reqUser.uid} className="flex items-center justify-between p-2 bg-slate-800/50 rounded-xl">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <img 
+                            src={reqUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${reqUser.username}`} 
+                            alt={reqUser.displayName} 
+                            className="w-8 h-8 rounded-full object-cover bg-slate-800"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold truncate">{reqUser.displayName}</p>
+                            <p className="text-[10px] text-slate-400 truncate">@{reqUser.username}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 ml-2">
+                          <button 
+                            onClick={() => handleAcceptRequest(reqUser.uid)}
+                            className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition"
+                            title="Terima"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => handleRejectRequest(reqUser.uid)}
+                            className="p-1 bg-red-600 hover:bg-red-500 text-white rounded-lg transition"
+                            title="Tolak"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <button 
             onClick={() => setShowAddFriend(true)}
             className="p-2 hover:bg-slate-800/50 rounded-xl text-slate-400 hover:text-indigo-400 transition"
@@ -54,6 +167,7 @@ export default function Sidebar({
           >
             <UserPlus className="w-5 h-5" />
           </button>
+
           <button 
             onClick={() => signOut(auth)}
             className="p-2 hover:bg-slate-800/50 rounded-xl text-slate-400 hover:text-red-400 transition"
@@ -64,6 +178,7 @@ export default function Sidebar({
         </div>
       </div>
 
+      {/* Input Cari */}
       <div className="p-3">
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
@@ -77,6 +192,7 @@ export default function Sidebar({
         </div>
       </div>
 
+      {/* Tabs Navigasi */}
       <div className="flex border-b border-slate-800 px-3">
         <button 
           onClick={() => setActiveTab('chats')}
@@ -92,6 +208,7 @@ export default function Sidebar({
         </button>
       </div>
 
+      {/* List Obrolan / Teman */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {activeTab === 'chats' && (
           <>
@@ -139,7 +256,7 @@ export default function Sidebar({
           <div className="space-y-1">
             {filteredFriends.length === 0 ? (
               <div className="text-center py-8 text-slate-500 text-xs">
-                Belum ada teman. Klik ikon tambah teman untuk mencari berdasarkan username!
+                Belum ada teman. Klik ikon tambah teman di atas!
               </div>
             ) : (
               filteredFriends.map(friend => {
@@ -151,10 +268,6 @@ export default function Sidebar({
                         src={friendAvatar} 
                         alt={friend.displayName} 
                         className="w-10 h-10 rounded-full object-cover bg-slate-800 flex-shrink-0" 
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${friend.username}`;
-                        }}
                       />
                       <div className="min-w-0">
                         <h4 className="font-semibold text-sm truncate text-white">{friend.displayName}</h4>

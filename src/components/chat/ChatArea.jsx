@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { MessageSquare, Phone, Video, Send, UserPlus, Check } from 'lucide-react';
+import { MessageSquare, Phone, Video, Send, UserPlus, Check, CheckCheck } from 'lucide-react';
 import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
@@ -15,16 +15,17 @@ export default function ChatArea({
 }) {
   const messagesEndRef = useRef(null);
   const [selectedUserModal, setSelectedUserModal] = useState(null);
-  const [addingFriend, setAddingFriend] = useState(false);
-  const [addedSuccess, setAddedSuccess] = useState(false);
+  const [sendingRequest, setSendingRequest] = useState(false);
+  const [requestSuccess, setRequestSuccess] = useState(false);
 
+  // Auto-scroll ke pesan terbaru
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Klik profil orang lain di chat untuk buka modal Add Friend
+  // Buka profil user saat diklik di obrolan
   const handleUserClick = async (senderId, fallbackName) => {
-    if (senderId === currentUser?.uid) return; // Jangan buka jika klik diri sendiri
+    if (senderId === currentUser?.uid) return; // Abaikan jika mengklik profil sendiri
 
     try {
       const userDoc = await getDoc(doc(db, "users", senderId));
@@ -39,35 +40,30 @@ export default function ChatArea({
         });
       }
     } catch (err) {
-      console.error("Error fetching user data:", err);
+      console.error("Gagal mengambil data user:", err);
     }
   };
 
-  // Fungsi Tambah Teman Langsung dari Modal Profil Chat
-  const handleAddFriendFromChat = async () => {
+  // Kirim Permintaan Pertemanan (Masuk ke Notifikasi Lonceng Lawan Bicara)
+  const handleSendFriendRequest = async () => {
     if (!selectedUserModal || !currentUser) return;
-    setAddingFriend(true);
+    setSendingRequest(true);
 
     try {
-      const myDocRef = doc(db, "users", currentUser.uid);
-      await updateDoc(myDocRef, {
-        friends: arrayUnion(selectedUserModal.uid)
+      const targetUserRef = doc(db, "users", selectedUserModal.uid);
+      await updateDoc(targetUserRef, {
+        friendRequests: arrayUnion(currentUser.uid)
       });
 
-      const targetDocRef = doc(db, "users", selectedUserModal.uid);
-      await updateDoc(targetDocRef, {
-        friends: arrayUnion(currentUser.uid)
-      });
-
-      setAddedSuccess(true);
+      setRequestSuccess(true);
       setTimeout(() => {
         setSelectedUserModal(null);
-        setAddedSuccess(false);
+        setRequestSuccess(false);
       }, 1500);
     } catch (err) {
-      console.error("Gagal menambah teman:", err);
+      console.error("Gagal mengirim permintaan pertemanan:", err);
     } finally {
-      setAddingFriend(false);
+      setSendingRequest(false);
     }
   };
 
@@ -117,10 +113,10 @@ export default function ChatArea({
 
         {!activeChat.isChannel && (
           <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-            <button onClick={() => setShowCall('voice')} className="p-2 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-indigo-400 transition">
+            <button onClick={() => setShowCall('voice')} className="p-2 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-indigo-400 transition" title="Panggilan Suara">
               <Phone className="w-5 h-5" />
             </button>
-            <button onClick={() => setShowCall('video')} className="p-2 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-indigo-400 transition">
+            <button onClick={() => setShowCall('video')} className="p-2 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-indigo-400 transition" title="Panggilan Video">
               <Video className="w-5 h-5" />
             </button>
           </div>
@@ -163,6 +159,12 @@ export default function ChatArea({
                   }`}
                 >
                   <p>{msg.text}</p>
+                  {/* Status Pesan Terkirim / Dibaca */}
+                  {isMe && !activeChat.isChannel && (
+                    <div className="flex justify-end mt-1 text-[10px] text-indigo-200">
+                      {msg.isRead ? <CheckCheck className="w-3.5 h-3.5 text-sky-300" /> : <Check className="w-3.5 h-3.5 text-indigo-300" />}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -191,7 +193,7 @@ export default function ChatArea({
         </div>
       </form>
 
-      {/* Modal Klik Profil User untuk Tambah Teman */}
+      {/* Modal Klik Profil User di Chat */}
       {selectedUserModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl">
@@ -211,17 +213,17 @@ export default function ChatArea({
               </div>
             ) : (
               <button
-                onClick={handleAddFriendFromChat}
-                disabled={addingFriend || addedSuccess}
+                onClick={handleSendFriendRequest}
+                disabled={sendingRequest || requestSuccess}
                 className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition"
               >
-                {addedSuccess ? (
+                {requestSuccess ? (
                   <>
-                    <Check className="w-4 h-4 text-emerald-400" /> Berhasil Ditambahkan!
+                    <Check className="w-4 h-4 text-emerald-400" /> Permintaan Terkirim!
                   </>
                 ) : (
                   <>
-                    <UserPlus className="w-4 h-4" /> Tambah Sebagai Teman
+                    <UserPlus className="w-4 h-4" /> Kirim Permintaan Pertemanan
                   </>
                 )}
               </button>

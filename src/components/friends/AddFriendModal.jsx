@@ -1,130 +1,136 @@
 import React, { useState } from 'react';
-import { UserPlus, X, CheckCircle, Loader2 } from 'lucide-react';
+import { Search, UserPlus, X, Check } from 'lucide-react';
 import { collection, query, where, getDocs, doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
-export default function AddFriendModal({ setShowAddFriend, currentUser, userProfile, setUserProfile }) {
-  const [friendSearchQuery, setFriendSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
+export default function AddFriendModal({ setShowAddFriend, currentUser, userProfile }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResult, setSearchResult] = useState(null);
+  const [searched, setSearched] = useState(false);
+  const [requestSent, setRequestSent] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
 
-  const handleSearchFriends = async (e) => {
-    if (e) e.preventDefault();
-    if (!friendSearchQuery.trim()) return;
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!searchTerm.trim()) return;
 
     setLoading(true);
-    setHasSearched(true);
-    const cleanSearch = friendSearchQuery.toLowerCase().trim();
+    setSearched(true);
+    setSearchResult(null);
+    setRequestSent(false);
 
     try {
-      // Query berdasarkan username
-      let q = query(collection(db, "users"), where("username", "==", cleanSearch));
-      let querySnapshot = await getDocs(q);
+      const cleanTerm = searchTerm.toLowerCase().trim();
+      const q = query(
+        collection(db, "users"), 
+        where("usernameLower", "==", cleanTerm)
+      );
+      const querySnapshot = await getDocs(q);
 
-      // Fallback query ke usernameLower jika query pertama kosong
-      if (querySnapshot.empty) {
-        q = query(collection(db, "users"), where("usernameLower", "==", cleanSearch));
-        querySnapshot = await getDocs(q);
-      }
-
-      const results = [];
-      querySnapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data.uid !== currentUser?.uid) {
-          results.push(data);
+      if (!querySnapshot.empty) {
+        const foundUser = querySnapshot.docs[0].data();
+        if (foundUser.uid !== currentUser.uid) {
+          setSearchResult(foundUser);
         }
-      });
-
-      setSearchResults(results);
+      }
     } catch (err) {
-      console.error("Error searching friends:", err);
+      console.error("Error searching user:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddFriend = async (targetUser) => {
+  const handleSendRequest = async () => {
+    if (!searchResult || !currentUser) return;
+
     try {
-      const currentUserRef = doc(db, "users", currentUser.uid);
-      await updateDoc(currentUserRef, { friends: arrayUnion(targetUser.uid) });
-      setUserProfile(prev => ({ ...prev, friends: [...(prev?.friends || []), targetUser.uid] }));
-      alert(`Berhasil menambahkan ${targetUser.displayName} sebagai teman!`);
+      const targetDocRef = doc(db, "users", searchResult.uid);
+      await updateDoc(targetDocRef, {
+        friendRequests: arrayUnion(currentUser.uid)
+      });
+      setRequestSent(true);
     } catch (err) {
-      console.error(err);
-      alert("Gagal menambahkan teman.");
+      console.error("Error sending friend request:", err);
     }
   };
 
+  const isAlreadyFriend = userProfile?.friends?.includes(searchResult?.uid);
+
   return (
-    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
-        <button onClick={() => setShowAddFriend(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white transition">
+    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
+        <button 
+          onClick={() => setShowAddFriend(false)}
+          className="absolute right-4 top-4 text-slate-400 hover:text-white transition"
+        >
           <X className="w-5 h-5" />
         </button>
 
-        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-white">
+        <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
           <UserPlus className="w-5 h-5 text-indigo-400" /> Cari & Tambah Teman
         </h3>
 
-        <form onSubmit={handleSearchFriends} className="flex gap-2 mb-4">
-          <input 
-            type="text" 
-            placeholder="Masukkan username tepat..."
-            value={friendSearchQuery}
-            onChange={(e) => setFriendSearchQuery(e.target.value)}
-            className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition"
-          />
+        <form onSubmit={handleSearch} className="flex gap-2 mb-6">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Masukkan username teman (contoh: fatlem)..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-800/80 border border-slate-700 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition"
+            />
+          </div>
           <button 
-            type="submit" 
+            type="submit"
             disabled={loading}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition flex items-center justify-center min-w-[70px]"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white rounded-xl text-xs font-semibold transition"
           >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Cari'}
+            {loading ? 'Mencari...' : 'Cari'}
           </button>
         </form>
 
-        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-          {searchResults.length > 0 ? (
-            searchResults.map((user) => {
-              const isAlreadyFriend = userProfile?.friends?.includes(user.uid);
-              const avatarSrc = user.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.username || user.displayName}`;
-
-              return (
-                <div key={user.uid} className="flex items-center justify-between p-3 bg-slate-800/40 rounded-xl border border-slate-700/50">
-                  <div className="flex items-center gap-3">
-                    <img 
-                      src={avatarSrc} 
-                      alt={user.displayName} 
-                      className="w-10 h-10 rounded-full object-cover bg-slate-700 border border-slate-600" 
-                    />
-                    <div>
-                      <h4 className="font-semibold text-sm text-white">{user.displayName}</h4>
-                      <p className="text-xs text-indigo-400">@{user.username}</p>
-                    </div>
+        {searched && (
+          <div>
+            {searchResult ? (
+              <div className="flex items-center justify-between p-3 bg-slate-800/50 rounded-xl border border-slate-700/50">
+                <div className="flex items-center gap-3">
+                  <img 
+                    src={searchResult.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${searchResult.username}`} 
+                    alt={searchResult.displayName}
+                    className="w-10 h-10 rounded-full object-cover bg-slate-800" 
+                  />
+                  <div>
+                    <h4 className="font-bold text-xs text-white">{searchResult.displayName}</h4>
+                    <p className="text-[10px] text-indigo-400">@{searchResult.username}</p>
                   </div>
-                  
-                  {isAlreadyFriend ? (
-                    <span className="text-xs text-emerald-400 flex items-center gap-1 font-semibold">
-                      <CheckCircle className="w-4 h-4" /> Teman
-                    </span>
-                  ) : (
-                    <button 
-                      onClick={() => handleAddFriend(user)} 
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition"
-                    >
-                      + Tambah
-                    </button>
-                  )}
                 </div>
-              );
-            })
-          ) : hasSearched && !loading ? (
-            <p className="text-xs text-center text-slate-400 py-4">Pengguna tidak ditemukan.</p>
-          ) : (
-            <p className="text-xs text-center text-slate-500 py-4">Ketik username dan tekan tombol Cari.</p>
-          )}
-        </div>
+
+                {isAlreadyFriend ? (
+                  <span className="text-[10px] text-emerald-400 font-semibold px-2 py-1 bg-emerald-500/10 rounded-lg">
+                    Sudah Teman
+                  </span>
+                ) : (
+                  <button 
+                    onClick={handleSendFriendRequest}
+                    disabled={requestSent}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1"
+                  >
+                    {requestSent ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" /> Terkirim
+                      </>
+                    ) : (
+                      'Kirim Request'
+                    )}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="text-center text-slate-500 text-xs py-4">Pengguna tidak ditemukan.</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
