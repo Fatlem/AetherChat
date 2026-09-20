@@ -38,28 +38,38 @@ export default function AuthModal({ setUserProfile }) {
           return;
         }
 
-        const usernameQuery = query(collection(db, "users"), where("username", "==", username.toLowerCase().trim()));
+        const cleanUsername = username.toLowerCase().trim();
+
+        // 1. Cek ketersediaan username
+        const usernameQuery = query(collection(db, "users"), where("username", "==", cleanUsername));
         const usernameSnap = await getDocs(usernameQuery);
         if (!usernameSnap.empty) {
           setAuthError('Username sudah digunakan oleh orang lain!');
           return;
         }
 
+        // 2. Buat akun Firebase Auth
         const res = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(res.user, { displayName, photoURL: selectedAvatar });
+        
+        // Atur avatar fallback jika selectedAvatar tidak valid
+        const finalAvatar = selectedAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`;
 
+        await updateProfile(res.user, { displayName, photoURL: finalAvatar });
+
+        // 3. Simpan data ke Firestore dengan field 'username' dan 'usernameLower' agar pencarian teman selalu berhasil
         const userData = {
           uid: res.user.uid,
-          email: email.toLowerCase(),
-          displayName,
-          username: username.toLowerCase().trim(),
-          photoURL: selectedAvatar,
+          email: email.toLowerCase().trim(),
+          displayName: displayName.trim(),
+          username: cleanUsername,
+          usernameLower: cleanUsername, // Field tambahan untuk keamanan query pencarian
+          photoURL: finalAvatar,
           friends: [],
           createdAt: serverTimestamp()
         };
 
         await setDoc(doc(db, "users", res.user.uid), userData);
-        setUserProfile(userData);
+        if (setUserProfile) setUserProfile(userData);
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
@@ -98,12 +108,14 @@ export default function AuthModal({ setUserProfile }) {
 
         <div className="flex bg-slate-800/60 p-1 rounded-xl mb-6">
           <button
+            type="button"
             onClick={() => setIsRegister(false)}
             className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${!isRegister ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
           >
             Masuk
           </button>
           <button
+            type="button"
             onClick={() => setIsRegister(true)}
             className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${isRegister ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
           >
