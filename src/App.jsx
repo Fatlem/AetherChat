@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, PhoneOff } from 'lucide-react';
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, getDocs } from "firebase/firestore";
+import { 
+  doc, 
+  getDoc, 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  addDoc, 
+  serverTimestamp, 
+  getDocs 
+} from "firebase/firestore";
 import { auth, db } from './config/firebase';
 
 import AuthModal from './components/auth/AuthModal';
@@ -15,7 +26,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   const [activeTab, setActiveTab] = useState('chats');
-  const [activeChat, setActiveChat] = useState(null);
+  const [activeChat, setActiveChat] = useState({ id: 'global-community', name: 'Komunitas Aether', isChannel: true });
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -24,32 +35,47 @@ export default function App() {
   const [showCall, setShowCall] = useState(null);
   const [friendsList, setFriendsList] = useState([]);
 
+  // 1. Listen Auth State & Realtime User Profile Firestore Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    let unsubscribeFirestore = () => {};
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+
       if (user) {
-        setCurrentUser(user);
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          setUserProfile(userDoc.data());
-        } else {
-          setUserProfile({
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName || 'Pengguna',
-            username: user.email.split('@')[0].toLowerCase(),
-            photoURL: user.photoURL,
-            friends: []
-          });
-        }
+        // Sync Realtime Profil Firestore
+        const userDocRef = doc(db, "users", user.uid);
+        unsubscribeFirestore = onSnapshot(userDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            setUserProfile(docSnap.data());
+          } else {
+            // Profil standar jika dokumen Firestore belum ada
+            setUserProfile({
+              uid: user.uid,
+              email: user.email,
+              displayName: user.displayName || user.email.split('@')[0],
+              username: user.email.split('@')[0].toLowerCase(),
+              usernameLower: user.email.split('@')[0].toLowerCase(),
+              photoURL: user.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.email.split('@')[0]}`,
+              friends: []
+            });
+          }
+        });
       } else {
-        setCurrentUser(null);
         setUserProfile(null);
+        setFriendsList([]);
       }
+
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeFirestore();
+    };
   }, []);
 
+  // 2. Fetch Messages secara Realtime
   useEffect(() => {
     if (!activeChat || !currentUser) return;
 
@@ -64,46 +90,61 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
       setMessages(msgs);
+    }, (err) => {
+      console.error("Error loading messages:", err);
     });
 
     return () => unsubscribe();
   }, [activeChat, currentUser]);
 
+  // 3. Fetch Friends List
   useEffect(() => {
-    if (!currentUser || !userProfile?.friends) return;
-    if (userProfile.friends.length === 0) {
+    if (!currentUser || !userProfile?.friends || userProfile.friends.length === 0) {
       setFriendsList([]);
       return;
     }
 
     const fetchFriends = async () => {
-      const q = query(collection(db, "users"), where("uid", "in", userProfile.friends.slice(0, 10)));
-      const querySnapshot = await getDocs(q);
-      setFriendsList(querySnapshot.docs.map(docSnap => docSnap.data()));
+      try {
+        const q = query(collection(db, "users"), where("uid", "in", userProfile.friends.slice(0, 10)));
+        const querySnapshot = await getDocs(q);
+        setFriendsList(querySnapshot.docs.map(docSnap => docSnap.data()));
+      } catch (err) {
+        console.error("Error fetching friends:", err);
+      }
     };
 
     fetchFriends();
   }, [userProfile?.friends, currentUser]);
 
+  // 4. Handle Send Message
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim() || !activeChat) return;
+    if (!newMessage.trim() || !activeChat || !currentUser) return;
 
+    const senderUsername = userProfile?.username || currentUser.email.split('@')[0];
     const messageData = {
       senderId: currentUser.uid,
-      senderName: userProfile?.displayName || currentUser.displayName,
-      senderPhoto: userProfile?.photoURL || currentUser.photoURL,
-      text: newMessage,
+      senderName: userProfile?.displayName || currentUser.displayName || senderUsername,
+      senderUsername: senderUsername,
+      senderPhoto: userProfile?.photoURL || currentUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${senderUsername}`,
+      text: newMessage.trim(),
       timestamp: serverTimestamp()
     };
 
+    const textToSend = newMessage;
     setNewMessage('');
 
-    if (activeChat.isChannel) {
-      await addDoc(collection(db, "channels", activeChat.id, "messages"), messageData);
-    } else {
-      const chatId = [currentUser.uid, activeChat.uid].sort().join('_');
-      await addDoc(collection(db, "chats", chatId, "messages"), messageData);
+    try {
+      if (activeChat.isChannel) {
+        await addDoc(collection(db, "channels", activeChat.id, "messages"), messageData);
+      } else {
+        const chatId = [currentUser.uid, activeChat.uid].sort().join('_');
+        await addDoc(collection(db, "chats", chatId, "messages"), messageData);
+      }
+    } catch (err) {
+      console.error("Error sending message:", err);
+      setNewMessage(textToSend);
     }
   };
 
@@ -157,9 +198,17 @@ export default function App() {
       {showCall && (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-50 flex items-center justify-center p-4">
           <div className="text-center space-y-6">
-            <img src={activeChat?.photoURL} alt={activeChat?.displayName} className="w-24 h-24 rounded-full object-cover border-4 border-indigo-500/50 mx-auto animate-pulse" />
+            <img 
+              src={activeChat?.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${activeChat?.username || 'user'}`} 
+              alt={activeChat?.displayName} 
+              className="w-24 h-24 rounded-full object-cover border-4 border-indigo-500/50 mx-auto animate-pulse bg-slate-800" 
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${activeChat?.username || 'user'}`;
+              }}
+            />
             <div>
-              <h3 className="text-2xl font-bold">{activeChat?.displayName}</h3>
+              <h3 className="text-2xl font-bold">{activeChat?.displayName || 'Pengguna'}</h3>
               <p className="text-sm text-indigo-400 mt-1">Memanggil via {showCall === 'video' ? 'Video Call' : 'Panggilan Suara'}...</p>
             </div>
             <button onClick={() => setShowCall(null)} className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-full shadow-lg shadow-red-600/30 transition">
