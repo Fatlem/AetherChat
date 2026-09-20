@@ -5,7 +5,7 @@ import {
   createUserWithEmailAndPassword, 
   updateProfile 
 } from "firebase/auth";
-import { doc, setDoc, getDocs, collection, query, where, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, getDocs, collection, query, where, serverTimestamp } from "firebase/firestore";
 import { auth, db } from '../../config/firebase';
 
 const DEFAULT_AVATARS = [
@@ -25,44 +25,51 @@ export default function AuthModal({ setUserProfile }) {
   const [displayName, setDisplayName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(DEFAULT_AVATARS[0]);
   const [authError, setAuthError] = useState('');
+  const [loading, setLoading] = useState(false);
   const avatarFileInputRef = useRef(null);
 
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError('');
+    setLoading(true);
 
     try {
       if (isRegister) {
-        if (!username || !displayName) {
+        if (!username.trim() || !displayName.trim()) {
           setAuthError('Semua kolom wajib diisi!');
+          setLoading(false);
           return;
         }
 
         const cleanUsername = username.toLowerCase().trim();
 
-        // 1. Cek ketersediaan username
-        const usernameQuery = query(collection(db, "users"), where("username", "==", cleanUsername));
+        // 1. Cek ketersediaan username di Firestore
+        const usernameQuery = query(collection(db, "users"), where("usernameLower", "==", cleanUsername));
         const usernameSnap = await getDocs(usernameQuery);
         if (!usernameSnap.empty) {
           setAuthError('Username sudah digunakan oleh orang lain!');
+          setLoading(false);
           return;
         }
 
         // 2. Buat akun Firebase Auth
-        const res = await createUserWithEmailAndPassword(auth, email, password);
+        const res = await createUserWithEmailAndPassword(auth, email.trim(), password);
         
-        // Atur avatar fallback jika selectedAvatar tidak valid
+        // Avatar URL fallback aman jika upload bermasalah
         const finalAvatar = selectedAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`;
 
-        await updateProfile(res.user, { displayName, photoURL: finalAvatar });
+        await updateProfile(res.user, { 
+          displayName: displayName.trim(), 
+          photoURL: finalAvatar 
+        });
 
-        // 3. Simpan data ke Firestore dengan field 'username' dan 'usernameLower' agar pencarian teman selalu berhasil
+        // 3. Simpan data lengkap ke Firestore
         const userData = {
           uid: res.user.uid,
           email: email.toLowerCase().trim(),
           displayName: displayName.trim(),
           username: cleanUsername,
-          usernameLower: cleanUsername, // Field tambahan untuk keamanan query pencarian
+          usernameLower: cleanUsername,
           photoURL: finalAvatar,
           friends: [],
           createdAt: serverTimestamp()
@@ -71,18 +78,36 @@ export default function AuthModal({ setUserProfile }) {
         await setDoc(doc(db, "users", res.user.uid), userData);
         if (setUserProfile) setUserProfile(userData);
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        // Login Flow
+        const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+        const user = userCredential.user;
+
+        // Ambil data profil dari Firestore saat login
+        const userDocRef = doc(db, "users", user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists() && setUserProfile) {
+          setUserProfile(userDoc.data());
+        }
       }
     } catch (err) {
-      setAuthError(err.message.includes('auth/invalid-credential') ? 'Email atau kata sandi salah.' : err.message);
+      console.error("Auth error:", err);
+      if (err.message.includes('auth/invalid-credential') || err.message.includes('auth/user-not-found') || err.message.includes('auth/wrong-password')) {
+        setAuthError('Email atau kata sandi salah.');
+      } else if (err.message.includes('auth/email-already-in-use')) {
+        setAuthError('Email sudah terdaftar. Silakan gunakan email lain.');
+      } else {
+        setAuthError(err.message.replace('Firebase:', '').trim());
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleAvatarFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      alert("Ukuran file maksimal 2MB!");
+    if (file.size > 1024 * 1024) { // Limit 1MB agar data Base64 tidak terlalu panjang di DB
+      alert("Ukuran file maksimal 1MB!");
       return;
     }
     const reader = new FileReader();
@@ -109,14 +134,14 @@ export default function AuthModal({ setUserProfile }) {
         <div className="flex bg-slate-800/60 p-1 rounded-xl mb-6">
           <button
             type="button"
-            onClick={() => setIsRegister(false)}
+            onClick={() => { setIsRegister(false); setAuthError(''); }}
             className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${!isRegister ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
           >
             Masuk
           </button>
           <button
             type="button"
-            onClick={() => setIsRegister(true)}
+            onClick={() => { setIsRegister(true); setAuthError(''); }}
             className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${isRegister ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
           >
             Daftar Akun
@@ -140,7 +165,7 @@ export default function AuthModal({ setUserProfile }) {
                   placeholder="Contoh: Alex Rivers"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition"
+                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition text-white"
                 />
               </div>
               <div>
@@ -151,14 +176,22 @@ export default function AuthModal({ setUserProfile }) {
                   placeholder="Contoh: alex_rivers"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition"
+                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition text-white"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-2">Pilih Foto Profil</label>
                 <div className="flex items-center gap-3 mb-3">
-                  <img src={selectedAvatar} alt="Selected" className="w-14 h-14 rounded-full object-cover border-2 border-indigo-500" />
+                  <img 
+                    src={selectedAvatar} 
+                    alt="Selected" 
+                    className="w-14 h-14 rounded-full object-cover border-2 border-indigo-500 bg-slate-800" 
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${username || 'user'}`;
+                    }}
+                  />
                   <input type="file" ref={avatarFileInputRef} onChange={handleAvatarFileUpload} accept="image/*" className="hidden" />
                   <button
                     type="button"
@@ -175,7 +208,11 @@ export default function AuthModal({ setUserProfile }) {
                       src={avatar}
                       alt={`Avatar ${idx}`}
                       onClick={() => setSelectedAvatar(avatar)}
-                      className={`w-10 h-10 rounded-full object-cover cursor-pointer border-2 transition hover:scale-105 ${selectedAvatar === avatar ? 'border-indigo-500 ring-2 ring-indigo-500/30' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                      className={`w-10 h-10 rounded-full object-cover cursor-pointer border-2 transition hover:scale-105 bg-slate-800 ${selectedAvatar === avatar ? 'border-indigo-500 ring-2 ring-indigo-500/30' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = `https://api.dicebear.com/7.x/bottts/svg?seed=avatar_${idx}`;
+                      }}
                     />
                   ))}
                 </div>
@@ -191,7 +228,7 @@ export default function AuthModal({ setUserProfile }) {
               placeholder="nama@email.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition"
+              className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition text-white"
             />
           </div>
 
@@ -203,15 +240,16 @@ export default function AuthModal({ setUserProfile }) {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition"
+              className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition text-white"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/25 transition mt-2"
+            disabled={loading}
+            className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/25 transition mt-2"
           >
-            {isRegister ? 'Buat Akun Sekarang' : 'Masuk ke Aplikasi'}
+            {loading ? 'Memproses...' : (isRegister ? 'Buat Akun Sekarang' : 'Masuk ke Aplikasi')}
           </button>
         </form>
       </div>
