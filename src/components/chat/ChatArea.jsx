@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { MessageSquare, Phone, Video, Send, UserPlus, Check, CheckCheck, Menu } from 'lucide-react';
+import { MessageSquare, Phone, Video, Send, UserPlus, Check, ArrowLeft } from 'lucide-react';
 import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
@@ -12,7 +12,7 @@ export default function ChatArea({
   setNewMessage, 
   handleSendMessage, 
   setShowCall,
-  setIsSidebarOpen 
+  onBackToSidebar
 }) {
   const messagesEndRef = useRef(null);
   const [selectedUserModal, setSelectedUserModal] = useState(null);
@@ -30,13 +30,6 @@ export default function ChatArea({
       const userDoc = await getDoc(doc(db, "users", senderId));
       if (userDoc.exists()) {
         setSelectedUserModal(userDoc.data());
-      } else {
-        setSelectedUserModal({
-          uid: senderId,
-          displayName: fallbackName || 'Pengguna',
-          username: 'user',
-          photoURL: `https://api.dicebear.com/7.x/bottts/svg?seed=${senderId}`
-        });
       }
     } catch (err) {
       console.error("Gagal mengambil data user:", err);
@@ -68,19 +61,10 @@ export default function ChatArea({
   if (!activeChat) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-950 text-slate-100">
-        <button 
-          onClick={() => setIsSidebarOpen(true)}
-          className="md:hidden absolute top-4 left-4 p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-300"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
         <div className="w-20 h-20 rounded-3xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4">
           <MessageSquare className="w-10 h-10" />
         </div>
         <h2 className="text-xl font-bold">Selamat Datang di AetherChat</h2>
-        <p className="text-slate-400 text-sm max-w-sm mt-1">
-          Pilih obrolan dari sidebar atau cari username teman Anda untuk mulai mengobrol secara langsung!
-        </p>
       </div>
     );
   }
@@ -89,14 +73,14 @@ export default function ChatArea({
 
   return (
     <div className="flex-1 flex flex-col bg-slate-950 text-slate-100 h-full overflow-hidden relative">
-      {/* Header Obrolan dengan Hamburger Mobile Button */}
+      {/* Header Obrolan Mobile */}
       <div className="p-3 md:p-4 border-b border-slate-800 bg-slate-900/40 backdrop-blur flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-2.5 md:gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0">
           <button 
-            onClick={() => setIsSidebarOpen(true)}
-            className="p-2 md:hidden hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition flex-shrink-0"
+            onClick={onBackToSidebar}
+            className="p-1.5 md:hidden hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition flex-shrink-0"
           >
-            <Menu className="w-5 h-5" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
 
           {activeChat.isChannel ? (
@@ -162,11 +146,6 @@ export default function ChatArea({
                   }`}
                 >
                   <p>{msg.text}</p>
-                  {isMe && !activeChat.isChannel && (
-                    <div className="flex justify-end mt-1 text-[10px] text-indigo-200">
-                      {msg.isRead ? <CheckCheck className="w-3.5 h-3.5 text-sky-300" /> : <Check className="w-3.5 h-3.5 text-indigo-300" />}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -175,7 +154,7 @@ export default function ChatArea({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Form Input Pesan */}
+      {/* Input Message */}
       <form onSubmit={handleSendMessage} className="p-3 md:p-4 border-t border-slate-800 bg-slate-900/40 flex-shrink-0">
         <div className="flex items-center gap-2">
           <input 

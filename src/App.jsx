@@ -19,22 +19,26 @@ import AuthModal from './components/auth/AuthModal';
 import Sidebar from './components/chat/Sidebar';
 import ChatArea from './components/chat/ChatArea';
 import AddFriendModal from './components/friends/AddFriendModal';
+import EditProfileModal from './components/profile/EditProfileModal';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const [activeTab, setActiveTab] = useState('chats');
+  const [activeTab, setActiveTab] = useState('chats'); // 'chats' | 'friends' | 'profile'
   const [activeChat, setActiveChat] = useState({ id: 'global-community', name: 'Komunitas Aether', isChannel: true });
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [showAddFriend, setShowAddFriend] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
   const [showCall, setShowCall] = useState(null);
   const [friendsList, setFriendsList] = useState([]);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // Mobile View State: Mengontrol apakah sedang membuka room chat di HP
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
 
   useEffect(() => {
     let unsubscribeFirestore = () => {};
@@ -145,7 +149,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
+      <div className="min-h-[100dvh] bg-slate-950 flex flex-col items-center justify-center text-white">
         <Sparkles className="w-12 h-12 text-indigo-500 animate-spin mb-4" />
         <h2 className="text-xl font-bold tracking-wider">Mempersiapkan AetherChat...</h2>
       </div>
@@ -157,34 +161,43 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex overflow-hidden font-sans bg-slate-950 text-slate-100 relative">
-      <Sidebar 
-        userProfile={userProfile}
-        currentUser={currentUser}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        activeChat={activeChat}
-        setActiveChat={setActiveChat}
-        friendsList={friendsList}
-        setShowAddFriend={setShowAddFriend}
-        isSidebarOpen={isSidebarOpen}
-        setIsSidebarOpen={setIsSidebarOpen}
-      />
+    <div className="h-[100dvh] w-full flex overflow-hidden font-sans bg-slate-950 text-slate-100 relative">
+      {/* Sidebar / List Chat */}
+      <div className={`w-full md:w-80 flex-shrink-0 ${isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
+        <Sidebar 
+          userProfile={userProfile}
+          currentUser={currentUser}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          activeChat={activeChat}
+          setActiveChat={(chat) => {
+            setActiveChat(chat);
+            setIsMobileChatOpen(true);
+          }}
+          friendsList={friendsList}
+          setShowAddFriend={setShowAddFriend}
+          setShowEditProfile={setShowEditProfile}
+        />
+      </div>
 
-      <ChatArea 
-        activeChat={activeChat}
-        currentUser={currentUser}
-        userProfile={userProfile}
-        messages={messages}
-        newMessage={newMessage}
-        setNewMessage={setNewMessage}
-        handleSendMessage={handleSendMessage}
-        setShowCall={setShowCall}
-        setIsSidebarOpen={setIsSidebarOpen}
-      />
+      {/* Area Chat */}
+      <div className={`flex-1 flex-col h-full ${!isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
+        <ChatArea 
+          activeChat={activeChat}
+          currentUser={currentUser}
+          userProfile={userProfile}
+          messages={messages}
+          newMessage={newMessage}
+          setNewMessage={setNewMessage}
+          handleSendMessage={handleSendMessage}
+          setShowCall={setShowCall}
+          onBackToSidebar={() => setIsMobileChatOpen(false)}
+        />
+      </div>
 
+      {/* Modal Tambah Teman */}
       {showAddFriend && (
         <AddFriendModal 
           setShowAddFriend={setShowAddFriend}
@@ -194,6 +207,16 @@ export default function App() {
         />
       )}
 
+      {/* Modal Edit Profil */}
+      {showEditProfile && (
+        <EditProfileModal 
+          setShowEditProfile={setShowEditProfile}
+          currentUser={currentUser}
+          userProfile={userProfile}
+        />
+      )}
+
+      {/* Panggilan Voip/Video */}
       {showCall && (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-50 flex items-center justify-center p-4">
           <div className="text-center space-y-6">
