@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, UserPlus, LogOut, Bell, Check, X, Menu } from 'lucide-react';
+import { Search, UserPlus, LogOut, Bell, Check, X } from 'lucide-react';
 import { signOut } from "firebase/auth";
 import { doc, onSnapshot, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../config/firebase';
@@ -74,7 +74,7 @@ export default function Sidebar({
 
   const handleSelectChat = (chatData) => {
     setActiveChat(chatData);
-    setIsSidebarOpen(false); // Otomatis tutup sidebar di mobile
+    if (setIsSidebarOpen) setIsSidebarOpen(false);
   };
 
   const filteredFriends = friendsList.filter(friend => 
@@ -84,7 +84,7 @@ export default function Sidebar({
 
   return (
     <>
-      {/* Overlay backdrop hitam saat sidebar terbuka di HP */}
+      {/* Dark Overlay untuk Mobile saat Sidebar Buka */}
       {isSidebarOpen && (
         <div 
           onClick={() => setIsSidebarOpen(false)} 
@@ -94,41 +94,40 @@ export default function Sidebar({
 
       <div className={`
         fixed md:static inset-y-0 left-0 z-50
-        w-80 max-w-[85%] md:w-80
+        w-[80%] max-w-[320px] md:w-80
         border-r flex flex-col bg-slate-900 border-slate-800 text-slate-100
-        transform transition-transform duration-300 ease-in-out
+        transform transition-transform duration-300 ease-in-out h-[100dvh]
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
         {/* Header Profil */}
-        <div className="p-4 border-b flex items-center justify-between border-slate-800">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="p-3.5 border-b flex items-center justify-between border-slate-800">
+          <div className="flex items-center gap-2.5 min-w-0">
             <img 
               src={avatarSrc} 
               alt={displayName} 
-              className="w-10 h-10 rounded-full object-cover border border-indigo-500/50 bg-slate-800 flex-shrink-0" 
+              className="w-9 h-9 rounded-full object-cover border border-indigo-500/50 bg-slate-800 flex-shrink-0" 
             />
             <div className="min-w-0">
-              <h3 className="font-bold text-sm leading-snug truncate text-white">{displayName}</h3>
-              <p className="text-xs text-indigo-400 truncate">@{username}</p>
+              <h3 className="font-bold text-xs leading-snug truncate text-white">{displayName}</h3>
+              <p className="text-[10px] text-indigo-400 truncate">@{username}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-1 flex-shrink-0">
-            {/* Lonceng Notifikasi */}
             <div className="relative">
               <button 
                 onClick={() => setShowNotifications(!showNotifications)}
-                className="p-2 hover:bg-slate-800/50 rounded-xl text-slate-400 hover:text-indigo-400 transition relative"
+                className="p-1.5 hover:bg-slate-800/50 rounded-xl text-slate-400 hover:text-indigo-400 transition relative"
               >
-                <Bell className="w-5 h-5" />
+                <Bell className="w-4 h-4" />
                 {incomingRequests.length > 0 && (
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-slate-900 animate-pulse"></span>
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full ring-2 ring-slate-900 animate-pulse"></span>
                 )}
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-3 z-50">
-                  <h4 className="text-xs font-bold text-slate-400 mb-2 px-1">Permintaan Pertemanan</h4>
+                <div className="absolute right-0 mt-2 w-64 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-3 z-50">
+                  <h4 className="text-[10px] font-bold text-slate-400 mb-2 px-1">Permintaan Pertemanan</h4>
                   {incomingRequests.length === 0 ? (
                     <p className="text-xs text-slate-500 py-3 text-center">Tidak ada permintaan pertemanan.</p>
                   ) : (
@@ -139,25 +138,25 @@ export default function Sidebar({
                             <img 
                               src={reqUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${reqUser.username}`} 
                               alt={reqUser.displayName} 
-                              className="w-8 h-8 rounded-full object-cover bg-slate-800"
+                              className="w-7 h-7 rounded-full object-cover bg-slate-800"
                             />
                             <div className="min-w-0">
                               <p className="text-xs font-bold truncate">{reqUser.displayName}</p>
                               <p className="text-[10px] text-slate-400 truncate">@{reqUser.username}</p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 ml-2">
+                          <div className="flex items-center gap-1 ml-1">
                             <button 
                               onClick={() => handleAcceptRequest(reqUser.uid)}
                               className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition"
                             >
-                              <Check className="w-3.5 h-3.5" />
+                              <Check className="w-3 h-3" />
                             </button>
                             <button 
                               onClick={() => handleRejectRequest(reqUser.uid)}
                               className="p-1 bg-red-600 hover:bg-red-500 text-white rounded-lg transition"
                             >
-                              <X className="w-3.5 h-3.5" />
+                              <X className="w-3 h-3" />
                             </button>
                           </div>
                         </div>
@@ -170,44 +169,43 @@ export default function Sidebar({
 
             <button 
               onClick={() => setShowAddFriend(true)}
-              className="p-2 hover:bg-slate-800/50 rounded-xl text-slate-400 hover:text-indigo-400 transition"
+              className="p-1.5 hover:bg-slate-800/50 rounded-xl text-slate-400 hover:text-indigo-400 transition"
             >
-              <UserPlus className="w-5 h-5" />
+              <UserPlus className="w-4 h-4" />
             </button>
 
             <button 
               onClick={() => signOut(auth)}
-              className="p-2 hover:bg-slate-800/50 rounded-xl text-slate-400 hover:text-red-400 transition"
+              className="p-1.5 hover:bg-slate-800/50 rounded-xl text-slate-400 hover:text-red-400 transition"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="w-4 h-4" />
             </button>
 
-            {/* Tombol Close Sidebar di HP */}
             <button 
               onClick={() => setIsSidebarOpen(false)}
-              className="p-2 md:hidden hover:bg-slate-800 rounded-xl text-slate-400"
+              className="p-1.5 md:hidden hover:bg-slate-800 rounded-xl text-slate-400 ml-1"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Search Input */}
-        <div className="p-3">
+        {/* Search */}
+        <div className="p-2.5">
           <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
             <input 
               type="text" 
               placeholder="Cari obrolan / teman..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition"
+              className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition"
             />
           </div>
         </div>
 
-        {/* Tabs Navigasi */}
-        <div className="flex border-b border-slate-800 px-3">
+        {/* Tabs */}
+        <div className="flex border-b border-slate-800 px-2">
           <button 
             onClick={() => setActiveTab('chats')}
             className={`flex-1 py-2 text-xs font-semibold border-b-2 transition ${activeTab === 'chats' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
@@ -222,20 +220,20 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* List Obrolan */}
+        {/* Chat List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {activeTab === 'chats' && (
             <>
               <div 
                 onClick={() => handleSelectChat({ id: 'global-community', name: 'Komunitas Aether', isChannel: true })}
-                className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${activeChat?.id === 'global-community' ? 'bg-indigo-600/20 border border-indigo-500/30' : 'hover:bg-slate-800/40'}`}
+                className={`flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer transition ${activeChat?.id === 'global-community' ? 'bg-indigo-600/20 border border-indigo-500/30' : 'hover:bg-slate-800/40'}`}
               >
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold flex-shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold flex-shrink-0 text-sm">
                   #
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-semibold text-sm truncate text-white">Komunitas Aether</h4>
-                  <p className="text-xs text-slate-400 truncate">Ruang obrolan publik bersama</p>
+                  <h4 className="font-semibold text-xs truncate text-white">Komunitas Aether</h4>
+                  <p className="text-[10px] text-slate-400 truncate">Ruang obrolan publik bersama</p>
                 </div>
               </div>
 
@@ -245,16 +243,16 @@ export default function Sidebar({
                   <div 
                     key={friend.uid}
                     onClick={() => handleSelectChat({ ...friend, isChannel: false })}
-                    className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${activeChat?.uid === friend.uid ? 'bg-indigo-600/20 border border-indigo-500/30' : 'hover:bg-slate-800/40'}`}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer transition ${activeChat?.uid === friend.uid ? 'bg-indigo-600/20 border border-indigo-500/30' : 'hover:bg-slate-800/40'}`}
                   >
                     <img 
                       src={friendAvatar} 
                       alt={friend.displayName} 
-                      className="w-10 h-10 rounded-full object-cover bg-slate-800 flex-shrink-0" 
+                      className="w-9 h-9 rounded-full object-cover bg-slate-800 flex-shrink-0" 
                     />
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-sm truncate text-white">{friend.displayName}</h4>
-                      <p className="text-xs text-slate-400 truncate">@{friend.username}</p>
+                      <h4 className="font-semibold text-xs truncate text-white">{friend.displayName}</h4>
+                      <p className="text-[10px] text-slate-400 truncate">@{friend.username}</p>
                     </div>
                   </div>
                 );
@@ -266,22 +264,22 @@ export default function Sidebar({
             <div className="space-y-1">
               {filteredFriends.length === 0 ? (
                 <div className="text-center py-8 text-slate-500 text-xs">
-                  Belum ada teman. Klik ikon tambah teman di atas!
+                  Belum ada teman.
                 </div>
               ) : (
                 filteredFriends.map(friend => {
                   const friendAvatar = friend.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${friend.username}`;
                   return (
-                    <div key={friend.uid} className="flex items-center justify-between p-3 bg-slate-800/30 rounded-xl">
-                      <div className="flex items-center gap-3 min-w-0">
+                    <div key={friend.uid} className="flex items-center justify-between p-2.5 bg-slate-800/30 rounded-xl">
+                      <div className="flex items-center gap-2 min-w-0">
                         <img 
                           src={friendAvatar} 
                           alt={friend.displayName} 
-                          className="w-10 h-10 rounded-full object-cover bg-slate-800 flex-shrink-0" 
+                          className="w-8 h-8 rounded-full object-cover bg-slate-800 flex-shrink-0" 
                         />
                         <div className="min-w-0">
-                          <h4 className="font-semibold text-sm truncate text-white">{friend.displayName}</h4>
-                          <p className="text-xs text-slate-400 truncate">@{friend.username}</p>
+                          <h4 className="font-semibold text-xs truncate text-white">{friend.displayName}</h4>
+                          <p className="text-[10px] text-slate-400 truncate">@{friend.username}</p>
                         </div>
                       </div>
                       <button 
@@ -289,7 +287,7 @@ export default function Sidebar({
                           handleSelectChat({ ...friend, isChannel: false });
                           setActiveTab('chats');
                         }}
-                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition flex-shrink-0 ml-2"
+                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-semibold transition flex-shrink-0 ml-1"
                       >
                         Pesan
                       </button>
