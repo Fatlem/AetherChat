@@ -34,8 +34,8 @@ export default function App() {
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showCall, setShowCall] = useState(null);
   const [friendsList, setFriendsList] = useState([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // 1. Listen Auth State & Realtime User Profile Firestore Listener
   useEffect(() => {
     let unsubscribeFirestore = () => {};
 
@@ -43,13 +43,11 @@ export default function App() {
       setCurrentUser(user);
 
       if (user) {
-        // Sync Realtime Profil Firestore
         const userDocRef = doc(db, "users", user.uid);
         unsubscribeFirestore = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
             setUserProfile(docSnap.data());
           } else {
-            // Profil standar jika dokumen Firestore belum ada
             setUserProfile({
               uid: user.uid,
               email: user.email,
@@ -75,7 +73,6 @@ export default function App() {
     };
   }, []);
 
-  // 2. Fetch Messages secara Realtime
   useEffect(() => {
     if (!activeChat || !currentUser) return;
 
@@ -97,7 +94,6 @@ export default function App() {
     return () => unsubscribe();
   }, [activeChat, currentUser]);
 
-  // 3. Fetch Friends List
   useEffect(() => {
     if (!currentUser || !userProfile?.friends || userProfile.friends.length === 0) {
       setFriendsList([]);
@@ -117,7 +113,6 @@ export default function App() {
     fetchFriends();
   }, [userProfile?.friends, currentUser]);
 
-  // 4. Handle Send Message
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() || !activeChat || !currentUser) return;
@@ -162,7 +157,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex overflow-hidden font-sans bg-slate-950 text-slate-100">
+    <div className="h-screen flex overflow-hidden font-sans bg-slate-950 text-slate-100 relative">
       <Sidebar 
         userProfile={userProfile}
         currentUser={currentUser}
@@ -174,16 +169,20 @@ export default function App() {
         setActiveChat={setActiveChat}
         friendsList={friendsList}
         setShowAddFriend={setShowAddFriend}
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={setIsSidebarOpen}
       />
 
       <ChatArea 
         activeChat={activeChat}
         currentUser={currentUser}
+        userProfile={userProfile}
         messages={messages}
         newMessage={newMessage}
         setNewMessage={setNewMessage}
         handleSendMessage={handleSendMessage}
         setShowCall={setShowCall}
+        setIsSidebarOpen={setIsSidebarOpen}
       />
 
       {showAddFriend && (
@@ -202,10 +201,6 @@ export default function App() {
               src={activeChat?.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${activeChat?.username || 'user'}`} 
               alt={activeChat?.displayName} 
               className="w-24 h-24 rounded-full object-cover border-4 border-indigo-500/50 mx-auto animate-pulse bg-slate-800" 
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${activeChat?.username || 'user'}`;
-              }}
             />
             <div>
               <h3 className="text-2xl font-bold">{activeChat?.displayName || 'Pengguna'}</h3>
